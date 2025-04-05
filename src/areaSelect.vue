@@ -122,11 +122,21 @@
           <span>抽测范围列表</span>
         </div>
         <div class="panel-content">
-          <Table border :columns="columns" :data="tableData" empty-text="暂无数据，请在左侧'配置抽测范围'">
+          <Table 
+            border 
+            :columns="columns" 
+            :data="tableData" 
+            empty-text="暂无数据，请在左侧'配置抽测范围'"
+            @on-selection-change="handleSelectionChange"
+          >
           </Table>
           <div class="table-actions">
-            <Button type="default">清空列表</Button>
-            <Button type="primary">统一抽选</Button>
+            <Button type="default" @click="handleClear">清空列表</Button>
+            <Button 
+              type="primary" 
+              @click="handleBatchSelect"
+              :disabled="selectedRows.length === 0"
+            >统一抽取</Button>
           </div>
         </div>
       </div>
@@ -168,9 +178,16 @@ export default {
         room: ''
       }],
 
+      // 添加选中数据数组
+      selectedRows: [],
+      
       // 抽测范围列表
       columns: [
-        { type: 'selection', width: 60, align: 'center' },
+        { 
+          type: 'selection', 
+          width: 60, 
+          align: 'center'
+        },
         { title: '抽取项目', key: 'item' },
         { title: '抽取范围', key: 'range' },
         { title: '抽取原则', key: 'principle' },
@@ -190,7 +207,7 @@ export default {
                   this.operate(params.index)
                 }
               }
-            }, '操作')
+            }, '抽取')
           ])
         }}
       ],
@@ -221,6 +238,11 @@ export default {
               },
               style: {
                 marginRight: '5px'
+              },
+              on: {
+                click: () => {
+                  this.showRecordResult(params.row);
+                }
               }
             }, '结果展示'),
             h('Button', {
@@ -240,19 +262,13 @@ export default {
           ])
         }}
       ],
-      recordData: [
-        {
-          group: '第1组',
-          item: '实测实量（全阶段）',
-          status: '正常',
-          description: '',
-          operator: '王玉柔',
-          time: '2023-03-26 14:16:01'
-        }
-      ],
+      recordData: [],
 
       // 新增: 错误消息存储
       errorMessages: [],
+
+      // 添加抽取历史权重记录
+      selectionHistory: {},
     }
   },
   created() {
@@ -260,6 +276,8 @@ export default {
     this.initErrorMessages();
     // 初始化表格数据
     this.initTableData();
+    // 初始化记录数据
+    this.initRecordData();
   },
   methods: {
     // 初始化错误消息数组
@@ -570,8 +588,360 @@ export default {
       }
     },
     
+    // 解析单个范围字符串，返回所有可能的组合
+    parseRangeString(rangeStr) {
+      const combinations = [];
+      const parts = rangeStr.split('-');
+      
+      let building = '';
+      let floors = [];
+      let rooms = [];
+      
+      // 解析每个部分
+      parts.forEach(part => {
+        if (part.includes('栋')) {
+          building = part.replace('栋', '');
+        } else if (part.includes('层')) {
+          // 处理层数范围
+          const floorNums = part.replace('层', '').split(',');
+          floors = floorNums.reduce((acc, floor) => {
+            if (floor.includes('-') || floor.includes('~')) {
+              const [start, end] = floor.split(/[-~]/);
+              for (let i = parseInt(start); i <= parseInt(end); i++) {
+                acc.push(i);
+              }
+            } else {
+              acc.push(parseInt(floor));
+            }
+            return acc;
+          }, []);
+        } else if (part.includes('户')) {
+          // 处理户号范围
+          const roomNums = part.replace('户', '').split(',');
+          rooms = roomNums.reduce((acc, room) => {
+            if (room.includes('-') || room.includes('~')) {
+              const [start, end] = room.split(/[-~]/);
+              for (let i = parseInt(start); i <= parseInt(end); i++) {
+                acc.push(i);
+              }
+            } else {
+              acc.push(parseInt(room));
+            }
+            return acc;
+          }, []);
+        }
+      });
+      
+      // 生成所有可能的组合
+      floors.forEach(floor => {
+        rooms.forEach(room => {
+          combinations.push(`${building}栋${floor}层${room}户`);
+        });
+      });
+      
+      return combinations;
+    },
+    
+    // 解析完整的范围数据
+    parseFullRange(rangeStr) {
+      // 按逗号分割多个范围
+      const ranges = rangeStr.split('，');
+      const allCombinations = [];
+      
+      // 解析每个范围并合并结果
+      ranges.forEach(range => {
+        const combinations = this.parseRangeString(range);
+        allCombinations.push(...combinations);
+      });
+      
+      return allCombinations;
+    },
+    
+    // 重置权重
+    resetWeights(pool) {
+      const weights = {};
+      pool.forEach(item => {
+        weights[item] = 1;
+      });
+      return weights;
+    },
+
+    // 更新权重
+    updateWeights(weights, selected) {
+      // 被选中的项权重降低
+      selected.forEach(item => {
+        if (weights[item]) {
+          weights[item] = Math.max(0.1, weights[item] - 0.3);
+        }
+      });
+
+      // 未被选中的项权重提高
+      Object.keys(weights).forEach(item => {
+        if (!selected.includes(item)) {
+          weights[item] = Math.min(2, weights[item] + 0.1);
+        }
+      });
+
+      return weights;
+    },
+
+    // 基于权重的随机选择
+    weightedRandom(array, weights, count) {
+      if (!array || array.length === 0) {
+        return [];
+      }
+
+      const selected = [];
+      const available = [...array];
+      
+      while (selected.length < count && available.length > 0) {
+        // 计算权重总和
+        const totalWeight = available.reduce((sum, item) => sum + (weights[item] || 1), 0);
+        
+        // 生成随机值
+        let random = Math.random() * totalWeight;
+        
+        // 基于权重选择项目
+        for (let i = 0; i < available.length; i++) {
+          const item = available[i];
+          random -= (weights[item] || 1);
+          
+          if (random <= 0) {
+            selected.push(item);
+            available.splice(i, 1); // 从可选项中移除
+            break;
+          }
+        }
+      }
+
+      return selected;
+    },
+
+    // 随机抽取指定数量的项目
+    randomSelect(array, count) {
+      if (!array || array.length === 0) {
+        return [];
+      }
+
+      // 获取或初始化权重
+      if (!this.selectionHistory[array[0]]) {
+        this.selectionHistory[array[0]] = this.resetWeights(array);
+      }
+
+      // 使用权重进行随机选择
+      const selected = this.weightedRandom(array, this.selectionHistory[array[0]], count);
+
+      // 更新权重
+      this.selectionHistory[array[0]] = this.updateWeights(this.selectionHistory[array[0]], selected);
+
+      return selected;
+    },
+
+    // 清空历史记录
+    clearHistory() {
+      this.selectionHistory = {};
+      this.$Message.success('已重置抽取权重');
+    },
+    
+    // 执行抽选
+    handleSelect(row) {
+      // 解析范围数据
+      const pool = this.parseFullRange(row.range);
+      
+      // 获取需要抽取的数量
+      const count = parseInt(row.count);
+      
+      if (pool.length < count) {
+        this.$Message.warning(`可抽取的总数(${pool.length})小于需要抽取的数量(${count})`);
+        return;
+      }
+      
+      // 随机抽取
+      const selected = this.randomSelect(pool, count);
+      
+      // 显示抽取结果
+      this.$Modal.info({
+        title: '抽选结果',
+        content: `
+          <div style="margin-bottom: 10px;">抽取项目：${row.item}</div>
+          <div style="margin-bottom: 10px;">抽取数量：${selected.length}</div>
+          <div style="margin-bottom: 10px;">抽取结果：</div>
+          <div style="max-height: 300px; overflow-y: auto;">
+            ${selected.map((item, index) => `${index + 1}. ${item}`).join('<br>')}
+          </div>
+        `,
+        width: 400
+      });
+      
+      // 添加到抽取记录
+      const record = {
+        group: `第${this.recordData.length + 1}组`,
+        item: row.item,
+        status: '正常',
+        description: '',
+        operator: row.operator,
+        time: new Date().toLocaleString(),
+        result: selected
+      };
+      
+      this.recordData.push(record);
+      
+      // 保存记录到本地存储
+      this.saveRecords();
+    },
+    
+    // 保存记录到本地存储
+    saveRecords() {
+      localStorage.setItem('areaSelectionRecords', JSON.stringify(this.recordData));
+    },
+    
+    // 初始化记录数据
+    initRecordData() {
+      const savedRecords = localStorage.getItem('areaSelectionRecords');
+      if (savedRecords) {
+        try {
+          this.recordData = JSON.parse(savedRecords);
+        } catch (e) {
+          console.error('解析记录数据出错：', e);
+          this.recordData = [];
+        }
+      }
+    },
+
+    // 更新表格的操作列
     operate(index) {
-      this.$Message.info(`Clicked operate button at row ${index}`);
+      const row = this.tableData[index];
+      this.handleSelect(row);
+    },
+
+    // 批量抽取
+    handleBatchSelect() {
+      if (this.selectedRows.length === 0) {
+        this.$Message.warning('请先选择要抽取的项目');
+        return;
+      }
+
+      // 存储所有抽取结果
+      const allResults = [];
+      let hasError = false;
+
+      // 对每个选中的项目进行抽取
+      this.selectedRows.forEach(row => {
+        // 解析范围数据
+        const pool = this.parseFullRange(row.range);
+        const count = parseInt(row.count);
+
+        if (pool.length < count) {
+          this.$Message.warning(`${row.item}可抽取的总数(${pool.length})小于需要抽取的数量(${count})`);
+          hasError = true;
+          return;
+        }
+
+        // 随机抽取
+        const selected = this.randomSelect(pool, count);
+
+        // 添加到结果集
+        allResults.push({
+          item: row.item,
+          count: selected.length,
+          results: selected,
+          operator: row.operator
+        });
+
+        // 添加到抽取记录
+        const record = {
+          group: `第${this.recordData.length + 1}组`,
+          item: row.item,
+          status: '正常',
+          description: '',
+          operator: row.operator,
+          time: new Date().toLocaleString(),
+          result: selected
+        };
+        
+        this.recordData.push(record);
+      });
+
+      // 如果有错误则不显示结果
+      if (hasError) {
+        return;
+      }
+
+      // 显示批量抽取结果
+      this.$Modal.info({
+        title: '批量抽取结果',
+        content: `
+          <div style="max-height: 500px; overflow-y: auto;">
+            ${allResults.map(result => `
+              <div style="margin-bottom: 20px;">
+                <div style="font-weight: bold; margin-bottom: 10px;">
+                  ${result.item}（抽取数量：${result.count}）
+                </div>
+                <div style="margin-left: 20px;">
+                  ${result.results.map((item, index) => `${index + 1}. ${item}`).join('<br>')}
+                </div>
+              </div>
+            `).join('<hr style="margin: 15px 0;">')}
+          </div>
+        `,
+        width: 500
+      });
+
+      // 保存记录到本地存储
+      this.saveRecords();
+
+      // 清除选中状态
+      this.selectedRows = [];
+    },
+
+    // 表格选择事件处理
+    handleSelectionChange(selection) {
+      this.selectedRows = selection;
+    },
+
+    // 显示记录结果
+    showRecordResult(record) {
+      if (!record.result || record.result.length === 0) {
+        this.$Message.warning('没有找到抽取结果');
+        return;
+      }
+
+      this.$Modal.info({
+        title: '抽取结果',
+        content: `
+          <div style="margin-bottom: 15px;">
+            <div><strong>记录组：</strong>${record.group}</div>
+            <div><strong>抽取项目：</strong>${record.item}</div>
+            <div><strong>抽取人：</strong>${record.operator}</div>
+            <div><strong>抽取时间：</strong>${record.time}</div>
+            <div><strong>抽取数量：</strong>${record.result.length}</div>
+          </div>
+          <div style="margin-bottom: 10px;"><strong>抽取结果：</strong></div>
+          <div style="max-height: 300px; overflow-y: auto; padding: 10px; background-color: #f8f8f9; border-radius: 4px;">
+            ${record.result.map((item, index) => `
+              <div style="margin-bottom: 5px;">${index + 1}. ${item}</div>
+            `).join('')}
+          </div>
+        `,
+        width: 500,
+        styles: {
+          top: '50px'
+        }
+      });
+    },
+
+    // 清空列表和历史记录
+    handleClear() {
+      this.$Modal.confirm({
+        title: '确认清空',
+        content: '是否确认清空列表和抽取历史？这将重置所有抽取权重。',
+        onOk: () => {
+          this.tableData = [];
+          this.clearHistory();
+          localStorage.removeItem('areaSelectionData');
+          this.$Message.success('已清空列表和抽取历史');
+        }
+      });
     },
   },
   computed: {
@@ -754,4 +1124,5 @@ export default {
   font-size: 12px;
 }
 </style>
+
 
