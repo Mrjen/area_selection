@@ -11,7 +11,7 @@ export default {
 
 <template>
   <div class="app-container">
-    <h2 class="app-title">深圳市罗湖区建筑工务署第三方评估-深圳市罗湖区建筑工务署第三方评估</h2>
+    <!-- <h2 class="app-title">深圳市罗湖区建筑工务署第三方评估-深圳市罗湖区建筑工务署第三方评估</h2> -->
     <AreaSelect />
   </div>
 </template>

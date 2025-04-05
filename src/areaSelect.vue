@@ -270,14 +270,14 @@ export default {
                 }
               }
             }, '结果展示'),
-            h('Button', {
-              props: {
-                size: 'small'
-              },
-              style: {
-                marginRight: '5px'
-              }
-            }, '复制'),
+            // h('Button', {
+            //   props: {
+            //     size: 'small'
+            //   },
+            //   style: {
+            //     marginRight: '5px'
+            //   }
+            // }, '复制'),
             h('Button', {
               props: {
                 type: 'warning',
@@ -693,12 +693,29 @@ export default {
         }
       });
       
-      // 生成所有可能的组合
-      floors.forEach(floor => {
-        rooms.forEach(room => {
-          combinations.push(`${building}栋${floor}层${room}户`);
-        });
-      });
+      // 根据选择的项目生成组合
+      if (this.buildingSelected) {
+        if (!this.floorSelected && !this.roomSelected) {
+          // 只选择了栋
+          combinations.push(`${building}栋`);
+        } else if (this.floorSelected && !this.roomSelected) {
+          // 选择了栋和层
+          floors.forEach(floor => {
+            combinations.push(`${building}栋${floor}层`);
+          });
+        } else if (this.floorSelected && this.roomSelected) {
+          // 选择了栋、层和户
+          floors.forEach(floor => {
+            if (rooms.length > 0) {
+              rooms.forEach(room => {
+                combinations.push(`${building}栋${floor}层${room}户`);
+              });
+            } else {
+              combinations.push(`${building}栋${floor}层`);
+            }
+          });
+        }
+      }
       
       return combinations;
     },
@@ -804,7 +821,7 @@ export default {
       this.$Message.success('已重置抽取权重');
     },
     
-    // 执行抽选
+    // 修改handleSelect方法
     handleSelect(row) {
       // 解析范围数据
       const pool = this.parseFullRange(row.range);
@@ -822,16 +839,22 @@ export default {
       
       // 显示抽取结果
       this.$Modal.info({
-        title: '抽选结果',
+        title: '抽取结果',
         content: `
-          <div style="margin-bottom: 10px;">抽取项目：${row.item}</div>
-          <div style="margin-bottom: 10px;">抽取数量：${selected.length}</div>
-          <div style="margin-bottom: 10px;">抽取结果：</div>
-          <div style="max-height: 300px; overflow-y: auto;">
-            ${selected.map((item, index) => `${index + 1}. ${item}`).join('<br>')}
+          <div style="margin-bottom: 15px;">
+            <div><strong>抽取项目：</strong>${row.item}</div>
+            <div><strong>抽取数量：</strong>${selected.length}</div>
+            <div><strong>抽取范围：</strong>${row.range}</div>
+            <div><strong>抽取原则：</strong>${row.principle}</div>
+          </div>
+          <div style="margin-bottom: 10px;"><strong>抽取结果：</strong></div>
+          <div style="max-height: 300px; overflow-y: auto; padding: 10px; background-color: #f8f8f9; border-radius: 4px;">
+            ${selected.map((item, index) => `
+              <div style="margin-bottom: 5px;">${index + 1}. ${item}</div>
+            `).join('')}
           </div>
         `,
-        width: 400
+        width: 500
       });
       
       // 添加到抽取记录
