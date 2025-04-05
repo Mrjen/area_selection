@@ -254,7 +254,7 @@ export default {
         { title: '作废说明', key: 'description' },
         { title: '抽取人', key: 'operator' },
         { title: '抽测时间', key: 'time' },
-        { title: '操作', key: 'action', width: 200, render: (h, params) => {
+        { title: '操作', key: 'action', width: 280, render: (h, params) => {
           return h('div', [
             h('Button', {
               props: {
@@ -280,10 +280,30 @@ export default {
             }, '复制'),
             h('Button', {
               props: {
+                type: 'warning',
+                size: 'small',
+                disabled: params.row.status === '作废'
+              },
+              style: {
+                marginRight: '5px'
+              },
+              on: {
+                click: () => {
+                  this.handleInvalidate(params.index);
+                }
+              }
+            }, '作废'),
+            h('Button', {
+              props: {
                 type: 'error',
                 size: 'small'
+              },
+              on: {
+                click: () => {
+                  this.handleDeleteRecord(params.index);
+                }
               }
-            }, '作废')
+            }, '删除')
           ])
         }}
       ],
@@ -297,6 +317,9 @@ export default {
 
       // 添加编辑状态数据
       editingIndex: -1, // -1 表示不在编辑状态
+
+      // 新增: 作废原因存储
+      invalidateReason: '',
     }
   },
   created() {
@@ -1030,6 +1053,64 @@ export default {
           this.clearHistory();
           localStorage.removeItem('areaSelectionData');
           this.$Message.success('已清空列表和抽取历史');
+        }
+      });
+    },
+
+    // 处理记录删除
+    handleDeleteRecord(index) {
+      this.$Modal.confirm({
+        title: '确认删除',
+        content: '确定要删除这条抽取记录吗？删除后无法恢复。',
+        onOk: () => {
+          this.recordData.splice(index, 1);
+          this.saveRecords();
+          this.$Message.success('删除成功');
+        }
+      });
+    },
+
+    // 处理作废操作
+    handleInvalidate(index) {
+      this.$Modal.confirm({
+        title: '记录作废',
+        render: (h) => {
+          return h('div', [
+            h('p', '请输入作废说明：'),
+            h('Input', {
+              props: {
+                type: 'textarea',
+                rows: 4,
+                placeholder: '请输入作废原因...'
+              },
+              on: {
+                input: (val) => {
+                  this.invalidateReason = val;
+                }
+              }
+            })
+          ]);
+        },
+        onOk: () => {
+          if (!this.invalidateReason) {
+            this.$Message.warning('请输入作废说明');
+            return;
+          }
+
+          // 更新记录状态
+          this.recordData[index].status = '作废';
+          this.recordData[index].description = this.invalidateReason;
+          
+          // 保存更新
+          this.saveRecords();
+          
+          // 清空作废原因
+          this.invalidateReason = '';
+          
+          this.$Message.success('记录已作废');
+        },
+        onCancel: () => {
+          this.invalidateReason = '';
         }
       });
     },
