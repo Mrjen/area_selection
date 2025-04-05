@@ -192,7 +192,7 @@ export default {
         { title: '抽取范围', key: 'range' },
         { title: '抽取原则', key: 'principle' },
         { title: '抽测数量', key: 'count' },
-        { title: '操作', key: 'action', width: 150, render: (h, params) => {
+        { title: '操作', key: 'action', width: 200, render: (h, params) => {
           return h('div', [
             h('Button', {
               props: {
@@ -204,11 +204,36 @@ export default {
               },
               on: {
                 click: () => {
-                  this.operate(params.index)
+                  this.handleSelect(params.row);
                 }
               }
-            }, '抽取')
-          ])
+            }, '抽取'),
+            h('Button', {
+              props: {
+                type: 'info',
+                size: 'small'
+              },
+              style: {
+                marginRight: '5px'
+              },
+              on: {
+                click: () => {
+                  this.handleEdit(params.row, params.index);
+                }
+              }
+            }, '修改'),
+            h('Button', {
+              props: {
+                type: 'error',
+                size: 'small'
+              },
+              on: {
+                click: () => {
+                  this.handleDelete(params.index);
+                }
+              }
+            }, '删除')
+          ]);
         }}
       ],
       tableData: [],
@@ -269,6 +294,9 @@ export default {
 
       // 添加抽取历史权重记录
       selectionHistory: {},
+
+      // 添加编辑状态数据
+      editingIndex: -1, // -1 表示不在编辑状态
     }
   },
   created() {
@@ -538,8 +566,15 @@ export default {
           }
         }
 
-        // 添加新数据
-        dataList.push(newItem);
+        // 如果是编辑状态，替换原数据
+        if (this.editingIndex !== -1) {
+          dataList[this.editingIndex] = newItem;
+          this.$Message.success('修改成功');
+        } else {
+          // 添加新数据
+          dataList.push(newItem);
+          this.$Message.success('保存成功');
+        }
 
         // 保存到本地存储
         localStorage.setItem('areaSelectionData', JSON.stringify(dataList));
@@ -547,7 +582,8 @@ export default {
         // 更新表格数据
         this.tableData = dataList;
 
-        this.$Message.success('保存成功');
+        // 重置编辑状态
+        this.editingIndex = -1;
 
         // 清空表单数据
         this.resetForm();
@@ -556,7 +592,7 @@ export default {
       }
     },
     
-    // 添加重置表单的方法
+    // 修改resetForm方法
     resetForm() {
       this.selectedItem = '';
       this.operator = '';
@@ -571,6 +607,8 @@ export default {
         floor: '',
         room: ''
       }];
+      // 重置编辑状态
+      this.editingIndex = -1;
     },
 
     // 添加初始化数据的方法
@@ -808,10 +846,62 @@ export default {
       }
     },
 
-    // 更新表格的操作列
-    operate(index) {
-      const row = this.tableData[index];
-      this.handleSelect(row);
+    // 处理修改操作
+    handleEdit(row, index) {
+      // 设置编辑状态
+      this.editingIndex = index;
+
+      // 将数据填充到表单中
+      this.selectedItem = row.item;
+      this.selectedPrinciple = row.principle;
+      this.selectCount = row.count;
+      this.operator = row.operator;
+
+      // 解析范围数据
+      const ranges = row.range.split('，');
+      this.buildingGroups = [];
+      
+      ranges.forEach(range => {
+        const parts = range.split('-');
+        let building = '', floor = '', room = '';
+        
+        parts.forEach(part => {
+          if (part.includes('栋')) {
+            building = part.replace('栋', '');
+          } else if (part.includes('层')) {
+            floor = part.replace('层', '');
+          } else if (part.includes('户')) {
+            room = part.replace('户', '');
+          }
+        });
+
+        this.buildingGroups.push({
+          building,
+          floor,
+          room
+        });
+      });
+
+      // 设置选中状态
+      this.buildingSelected = true;
+      this.floorSelected = ranges[0].includes('层');
+      this.roomSelected = ranges[0].includes('户');
+
+      // 提示用户
+      this.$Message.info('请在左侧表单中修改数据后保存');
+    },
+
+    // 处理删除操作
+    handleDelete(index) {
+      this.$Modal.confirm({
+        title: '确认删除',
+        content: '确定要删除这条记录吗？',
+        onOk: () => {
+          this.tableData.splice(index, 1);
+          localStorage.setItem('areaSelectionData', JSON.stringify(this.tableData));
+          this.$Message.success('删除成功');
+        }
+      });
     },
 
     // 批量抽取
