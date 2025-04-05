@@ -258,6 +258,8 @@ export default {
   created() {
     // 初始化错误消息数组
     this.initErrorMessages();
+    // 初始化表格数据
+    this.initTableData();
   },
   methods: {
     // 初始化错误消息数组
@@ -478,10 +480,93 @@ export default {
       
       // 验证全部通过
       if (isValid) {
-        console.log('表单验证通过', this.buildingGroups);
-        this.$Message.success('提交成功');
+        // 构建范围字符串
+        const buildingRanges = this.buildingGroups.map(group => {
+          const parts = [];
+          if (this.buildingSelected && group.building) {
+            parts.push(`${group.building}栋`);
+          }
+          if (this.floorSelected && group.floor) {
+            parts.push(`${group.floor}层`);
+          }
+          if (this.roomSelected && group.room) {
+            parts.push(`${group.room}户`);
+          }
+          return parts.join('-');
+        }).join('，');
+
+        // 构建新的数据项
+        const newItem = {
+          item: this.selectedItem,
+          range: buildingRanges,
+          principle: this.selectedPrinciple,
+          count: this.selectCount,
+          operator: this.operator
+        };
+
+        // 从本地存储获取现有数据
+        let existingData = localStorage.getItem('areaSelectionData');
+        let dataList = [];
+
+        if (existingData) {
+          try {
+            dataList = JSON.parse(existingData);
+            if (!Array.isArray(dataList)) {
+              dataList = [];
+            }
+          } catch (e) {
+            console.error('解析缓存数据出错：', e);
+            dataList = [];
+          }
+        }
+
+        // 添加新数据
+        dataList.push(newItem);
+
+        // 保存到本地存储
+        localStorage.setItem('areaSelectionData', JSON.stringify(dataList));
+
+        // 更新表格数据
+        this.tableData = dataList;
+
+        this.$Message.success('保存成功');
+
+        // 清空表单数据
+        this.resetForm();
       } else {
         this.$Message.error('请修正表单中的错误');
+      }
+    },
+    
+    // 添加重置表单的方法
+    resetForm() {
+      this.selectedItem = '';
+      this.operator = '';
+      this.selectCount = '2';
+      this.buildingGroups = [{
+        building: '',
+        floor: '',
+        room: ''
+      }];
+      this.errorMessages = [{
+        building: '',
+        floor: '',
+        room: ''
+      }];
+    },
+
+    // 添加初始化数据的方法
+    initTableData() {
+      const existingData = localStorage.getItem('areaSelectionData');
+      if (existingData) {
+        try {
+          const dataList = JSON.parse(existingData);
+          if (Array.isArray(dataList)) {
+            this.tableData = dataList;
+          }
+        } catch (e) {
+          console.error('初始化表格数据出错：', e);
+        }
       }
     },
     
