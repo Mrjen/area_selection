@@ -161,10 +161,10 @@ export default {
   data() {
     return {
       // 抽测范围配置
-      selectedItem: '测试项目1',
+      selectedItem: '',
       selectedPrinciple: '随机抽取',
-      selectCount: '3',
-      operator: '陈丽',
+      selectCount: '',
+      operator: '',
       
       // 高层配置
       buildingSelected: true,
@@ -1182,6 +1182,7 @@ export default {
   display: flex;
   flex-direction: column;
   gap: 20px;
+  min-width: 1200px;
 }
 
 .config-panel, .result-panel, .record-panel {
