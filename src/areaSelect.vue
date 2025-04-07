@@ -204,10 +204,20 @@ export default {
           align: 'center'
         },
         { title: '抽取项目', key: 'item' },
-        { title: '抽取范围', key: 'range' },
-        { title: '抽取原则', key: 'principle' },
-        { title: '抽测数量', key: 'count' },
-        { title: '抽选阶段', key: 'stage' },
+        { 
+          title: '抽取范围', 
+          key: 'range',
+          render: (h, params) => {
+            // 处理范围显示，将"-"替换为空格，使栋、层、户之间更易区分
+            const range = params.row.range;
+            // 替换"栋-"为"栋 "，"层-"为"层 "，但保留数字之间的"-"
+            const formattedRange = range.replace(/栋-/g, '栋 ').replace(/层-/g, '层 ');
+            return h('span', formattedRange);
+          }
+        },
+        { title: '抽取原则', key: 'principle', width: 95 },
+        { title: '抽测数量', key: 'count', width: 95 },
+        { title: '抽选阶段', key: 'stage', width: 95 },
         { title: '操作', key: 'action', width: 200, render: (h, params) => {
           return h('div', [
             h('Button', {
@@ -977,6 +987,9 @@ export default {
       const selected = this.randomSelect(pool, count);
       console.log('抽取结果:', selected);
       
+      // 格式化范围显示
+      const formattedRange = row.range.replace(/栋-/g, '栋 ').replace(/层-/g, '层 ');
+      
       // 显示抽取结果
       this.$Modal.info({
         title: '抽取结果',
@@ -985,7 +998,7 @@ export default {
             <div><strong>抽取项目：</strong>${row.item}</div>
             <div><strong>抽选阶段：</strong>${row.stage}</div>
             <div><strong>抽取数量：</strong>${selected.length}</div>
-            <div><strong>抽取范围：</strong>${row.range}</div>
+            <div><strong>抽取范围：</strong>${formattedRange}</div>
             <div><strong>抽取原则：</strong>${row.principle}</div>
           </div>
           <div style="margin-bottom: 10px;"><strong>抽取结果：</strong></div>
@@ -1154,16 +1167,25 @@ export default {
         title: '批量抽取结果',
         content: `
           <div style="max-height: 500px; overflow-y: auto;">
-            ${allResults.map(result => `
-              <div style="margin-bottom: 20px;">
-                <div style="font-weight: bold; margin-bottom: 10px;">
-                  ${result.item}（抽取数量：${result.count}）
+            ${allResults.map(result => {
+              // 查找原始行数据以获取范围
+              const originalRow = this.selectedRows.find(row => row.item === result.item);
+              const formattedRange = originalRow ? originalRow.range.replace(/栋-/g, '栋 ').replace(/层-/g, '层 ') : '';
+              
+              return `
+                <div style="margin-bottom: 20px;">
+                  <div style="font-weight: bold; margin-bottom: 10px;">
+                    ${result.item}（抽取数量：${result.count}）
+                  </div>
+                  <div style="margin-bottom: 5px;">
+                    <span style="color: #666;">抽取范围：${formattedRange}</span>
+                  </div>
+                  <div style="margin-left: 20px;">
+                    ${result.results.map((item, index) => `${index + 1}. ${item}`).join('<br>')}
+                  </div>
                 </div>
-                <div style="margin-left: 20px;">
-                  ${result.results.map((item, index) => `${index + 1}. ${item}`).join('<br>')}
-                </div>
-              </div>
-            `).join('<hr style="margin: 15px 0;">')}
+              `;
+            }).join('<hr style="margin: 15px 0;">')}
           </div>
         `,
         width: 500
@@ -1201,9 +1223,11 @@ export default {
           </div>
           <div style="margin-bottom: 10px;"><strong>抽取结果：</strong></div>
           <div style="max-height: 300px; overflow-y: auto; padding: 10px; background-color: #f8f8f9; border-radius: 4px;">
-            ${record.result.map((item, index) => `
-              <div style="margin-bottom: 5px;">${index + 1}. ${item}</div>
-            `).join('')}
+            ${record.result.map((item, index) => {
+              // 格式化结果项，使栋、层、户之间更易区分
+              const formattedItem = item.replace(/栋/g, '栋 ').replace(/层/g, '层 ');
+              return `<div style="margin-bottom: 5px;">${index + 1}. ${formattedItem}</div>`;
+            }).join('')}
           </div>
         `,
         width: 500,
