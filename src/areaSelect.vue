@@ -20,8 +20,19 @@
                 <Option value="随机抽取" label="随机抽取"></Option>
               </Select>
             </FormItem>
+            
             <FormItem label="抽选数量" required>
               <Input v-model="selectCount" placeholder="请输入抽选数量" />
+            </FormItem>
+            <FormItem label="抽选阶段" required>
+              <Select v-model="selectedStage" placeholder="请选择抽选阶段">
+                <Option value="主体" label="主体"></Option>
+                <Option value="砌筑" label="砌筑"></Option>
+                <Option value="抹灰" label="抹灰"></Option>
+                <Option value="门窗" label="门窗"></Option>
+                <Option value="精装修" label="精装修"></Option>
+                <Option value="钢结构" label="钢结构"></Option>
+              </Select>
             </FormItem>
             <FormItem label="高层" class="high-level-item">
               <div class="high-level-content">
@@ -42,6 +53,7 @@
                         placeholder="请输入栋" 
                         :disabled="!buildingSelected"
                         @on-blur="validateAndShowError(group.building, 'building', index)"
+                        style="width: 150px;"
                       >
                         <span slot="prepend">栋</span>
                         <span slot="append"><Icon type="ios-search" /></span>
@@ -58,7 +70,8 @@
                         v-model="group.floor" 
                         placeholder="请输入楼层" 
                         :disabled="!floorSelected"
-                        @on-blur="validateAndShowError(group.floor, 'floor', index)"
+                        @on-blur="validateAndShowError(group.floor, 'floor', index)" 
+                        style="width: 150px;"
                       >
                         <span slot="prepend">层</span>
                         <span slot="append"><Icon type="ios-search" /></span>
@@ -76,6 +89,7 @@
                         placeholder="请输入户" 
                         :disabled="!roomSelected"
                         @on-blur="validateAndShowError(group.room, 'room', index)"
+                        style="width: 150px;"
                       >
                         <span slot="prepend">户</span>
                         <span slot="append"><Icon type="ios-search" /></span>
@@ -165,6 +179,7 @@ export default {
       selectedPrinciple: '随机抽取',
       selectCount: '',
       operator: '',
+      selectedStage: '',
       
       // 高层配置
       buildingSelected: true,
@@ -192,6 +207,7 @@ export default {
         { title: '抽取范围', key: 'range' },
         { title: '抽取原则', key: 'principle' },
         { title: '抽测数量', key: 'count' },
+        { title: '抽选阶段', key: 'stage' },
         { title: '操作', key: 'action', width: 200, render: (h, params) => {
           return h('div', [
             h('Button', {
@@ -242,6 +258,7 @@ export default {
       recordColumns: [
         { title: '记录组', key: 'group', width: 100 },
         { title: '抽取项目', key: 'item' },
+        { title: '抽选阶段', key: 'stage' },
         { title: '状态', key: 'status', width: 120, render: (h, params) => {
           return h('div', [
             h('Tag', {
@@ -570,7 +587,8 @@ export default {
           range: buildingRanges,
           principle: this.selectedPrinciple,
           count: this.selectCount,
-          operator: this.operator
+          operator: this.operator,
+          stage: this.selectedStage
         };
 
         // 从本地存储获取现有数据
@@ -620,6 +638,7 @@ export default {
       this.selectedItem = '';
       this.operator = '';
       this.selectCount = '2';
+      this.selectedStage = '';
       this.buildingGroups = [{
         building: '',
         floor: '',
@@ -651,87 +670,202 @@ export default {
     
     // 解析单个范围字符串，返回所有可能的组合
     parseRangeString(rangeStr) {
+      console.log('进入parseRangeString，处理范围:', rangeStr);
       const combinations = [];
-      const parts = rangeStr.split('-');
       
+      // 首先提取栋号
       let building = '';
-      let floors = [];
-      let rooms = [];
+      let floorStr = '';
+      let roomStr = '';
       
-      // 解析每个部分
-      parts.forEach(part => {
-        if (part.includes('栋')) {
-          building = part.replace('栋', '');
-        } else if (part.includes('层')) {
-          // 处理层数范围
-          const floorNums = part.replace('层', '').split(',');
-          floors = floorNums.reduce((acc, floor) => {
-            if (floor.includes('-') || floor.includes('~')) {
-              const [start, end] = floor.split(/[-~]/);
-              for (let i = parseInt(start); i <= parseInt(end); i++) {
-                acc.push(i);
-              }
-            } else {
-              acc.push(parseInt(floor));
-            }
-            return acc;
-          }, []);
-        } else if (part.includes('户')) {
-          // 处理户号范围
-          const roomNums = part.replace('户', '').split(',');
-          rooms = roomNums.reduce((acc, room) => {
-            if (room.includes('-') || room.includes('~')) {
-              const [start, end] = room.split(/[-~]/);
-              for (let i = parseInt(start); i <= parseInt(end); i++) {
-                acc.push(i);
-              }
-            } else {
-              acc.push(parseInt(room));
-            }
-            return acc;
-          }, []);
-        }
-      });
+      // 处理栋号
+      const buildingMatch = rangeStr.match(/(\d+)栋/);
+      if (buildingMatch) {
+        building = buildingMatch[1];
+        console.log('找到栋号:', building);
+      }
+      
+      // 处理层号
+      const floorMatch = rangeStr.match(/(\d+(?:-\d+)?)层/);
+      if (floorMatch) {
+        floorStr = floorMatch[1];
+        console.log('找到层号表达式:', floorStr);
+      }
+      
+      // 处理户号
+      const roomMatch = rangeStr.match(/(\d+(?:-\d+)?)户/);
+      if (roomMatch) {
+        roomStr = roomMatch[1];
+        console.log('找到户号表达式:', roomStr);
+      }
+      
+      // 解析层号范围
+      const floors = this.parseNumberRanges(floorStr);
+      console.log('解析后的层数:', floors);
+      
+      // 解析户号范围
+      const rooms = this.parseNumberRanges(roomStr);
+      console.log('解析后的户号:', rooms);
       
       // 根据选择的项目生成组合
-      if (this.buildingSelected) {
-        if (!this.floorSelected && !this.roomSelected) {
-          // 只选择了栋
+      if (building) {
+        if (floors.length === 0 && rooms.length === 0) {
+          // 只有栋号
           combinations.push(`${building}栋`);
-        } else if (this.floorSelected && !this.roomSelected) {
-          // 选择了栋和层
+        } else if (floors.length > 0 && rooms.length === 0) {
+          // 有栋号和层号
           floors.forEach(floor => {
             combinations.push(`${building}栋${floor}层`);
           });
-        } else if (this.floorSelected && this.roomSelected) {
-          // 选择了栋、层和户
+        } else if (floors.length > 0 && rooms.length > 0) {
+          // 有栋号、层号和户号
           floors.forEach(floor => {
-            if (rooms.length > 0) {
-              rooms.forEach(room => {
-                combinations.push(`${building}栋${floor}层${room}户`);
-              });
-            } else {
-              combinations.push(`${building}栋${floor}层`);
-            }
+            rooms.forEach(room => {
+              combinations.push(`${building}栋${floor}层${room}户`);
+            });
           });
         }
       }
       
+      console.log('生成的组合结果:', combinations);
       return combinations;
+    },
+    
+    // 解析数字范围，如 "2-7,8-16" 返回 [2,3,4,5,6,7,8,9,10,11,12,13,14,15,16]
+    parseNumberRanges(rangeStr) {
+      console.log('解析数字范围:', rangeStr);
+      if (!rangeStr || rangeStr.trim() === '') {
+        return [];
+      }
+      
+      const result = [];
+      
+      // 标准化输入，处理中文字符
+      rangeStr = rangeStr.replace(/，/g, ',').replace(/[~～]/g, '-');
+      
+      // 分割逗号，处理多个范围
+      const ranges = rangeStr.split(',');
+      console.log('分割后的范围:', ranges);
+      
+      ranges.forEach(range => {
+        range = range.trim();
+        console.log('处理范围:', range);
+        
+        if (range.includes('-')) {
+          // 处理范围，如 "2-7"
+          const [start, end] = range.split('-').map(num => parseInt(num, 10));
+          console.log(`范围 ${start} 到 ${end}`);
+          
+          if (!isNaN(start) && !isNaN(end) && start <= end) {
+            for (let i = start; i <= end; i++) {
+              result.push(i);
+            }
+          }
+        } else if (/^\d+$/.test(range)) {
+          // 处理单个数字
+          const num = parseInt(range, 10);
+          if (!isNaN(num)) {
+            result.push(num);
+          }
+        }
+      });
+      
+      console.log('解析结果:', result);
+      return result;
     },
     
     // 解析完整的范围数据
     parseFullRange(rangeStr) {
-      // 按逗号分割多个范围
+      console.log('解析完整范围:', rangeStr);
+      
+      // 检查是否有多个范围（以中文逗号分隔）
       const ranges = rangeStr.split('，');
+      console.log('分割后的范围数量:', ranges.length);
+      
+      // 如果只有一个范围表达式，尝试直接用正则表达式解析
+      if (ranges.length === 1) {
+        // 提取栋号
+        const buildingMatches = rangeStr.match(/(\d+)栋/g);
+        const floorMatches = rangeStr.match(/(\d+(?:-\d+)?)层/g);
+        const roomMatches = rangeStr.match(/(\d+(?:-\d+)?)户/g);
+        
+        console.log('正则匹配 - 栋:', buildingMatches);
+        console.log('正则匹配 - 层:', floorMatches);
+        console.log('正则匹配 - 户:', roomMatches);
+        
+        if (buildingMatches) {
+          // 从表达式中提取数字部分
+          const buildingNums = buildingMatches.map(b => b.replace('栋', ''));
+          const floorRanges = floorMatches ? floorMatches.map(f => f.replace('层', '')) : [];
+          const roomRanges = roomMatches ? roomMatches.map(r => r.replace('户', '')) : [];
+          
+          console.log('提取的栋号:', buildingNums);
+          console.log('提取的层范围:', floorRanges);
+          console.log('提取的户范围:', roomRanges);
+          
+          // 解析所有数字范围
+          const buildings = [];
+          buildingNums.forEach(b => {
+            const nums = this.parseNumberRanges(b);
+            buildings.push(...nums);
+          });
+          
+          const floors = [];
+          floorRanges.forEach(f => {
+            const nums = this.parseNumberRanges(f);
+            floors.push(...nums);
+          });
+          
+          const rooms = [];
+          roomRanges.forEach(r => {
+            const nums = this.parseNumberRanges(r);
+            rooms.push(...nums);
+          });
+          
+          console.log('解析后 - 栋:', buildings);
+          console.log('解析后 - 层:', floors);
+          console.log('解析后 - 户:', rooms);
+          
+          // 生成所有组合
+          const combinations = [];
+          
+          // 根据实际情况生成组合
+          buildings.forEach(building => {
+            if (floors.length === 0 && rooms.length === 0) {
+              // 只有栋
+              combinations.push(`${building}栋`);
+            } else if (floors.length > 0 && rooms.length === 0) {
+              // 有栋和层
+              floors.forEach(floor => {
+                combinations.push(`${building}栋${floor}层`);
+              });
+            } else if (floors.length > 0 && rooms.length > 0) {
+              // 有栋、层和户
+              floors.forEach(floor => {
+                rooms.forEach(room => {
+                  combinations.push(`${building}栋${floor}层${room}户`);
+                });
+              });
+            }
+          });
+          
+          console.log('生成的所有组合:', combinations);
+          return combinations;
+        }
+      }
+      
+      // 如果上面的方法不适用，回退到原来的方法
       const allCombinations = [];
       
       // 解析每个范围并合并结果
       ranges.forEach(range => {
+        console.log('处理单个范围:', range);
         const combinations = this.parseRangeString(range);
+        console.log('单个范围生成的组合:', combinations);
         allCombinations.push(...combinations);
       });
       
+      console.log('所有可能组合:', allCombinations);
       return allCombinations;
     },
     
@@ -763,56 +897,26 @@ export default {
       return weights;
     },
 
-    // 基于权重的随机选择
-    weightedRandom(array, weights, count) {
-      if (!array || array.length === 0) {
-        return [];
-      }
-
-      const selected = [];
-      const available = [...array];
-      
-      while (selected.length < count && available.length > 0) {
-        // 计算权重总和
-        const totalWeight = available.reduce((sum, item) => sum + (weights[item] || 1), 0);
-        
-        // 生成随机值
-        let random = Math.random() * totalWeight;
-        
-        // 基于权重选择项目
-        for (let i = 0; i < available.length; i++) {
-          const item = available[i];
-          random -= (weights[item] || 1);
-          
-          if (random <= 0) {
-            selected.push(item);
-            available.splice(i, 1); // 从可选项中移除
-            break;
-          }
-        }
-      }
-
-      return selected;
-    },
-
     // 随机抽取指定数量的项目
     randomSelect(array, count) {
+      console.log('执行随机抽取, 项目池:', array, '需要抽取数量:', count);
+      
       if (!array || array.length === 0) {
+        console.log('项目池为空，返回空数组');
         return [];
       }
 
-      // 获取或初始化权重
-      if (!this.selectionHistory[array[0]]) {
-        this.selectionHistory[array[0]] = this.resetWeights(array);
+      // 对于测试，先简单处理，直接随机抽取
+      if (array.length <= count) {
+        console.log('项目池数量小于等于需要抽取的数量，返回所有项目');
+        return [...array];
       }
-
-      // 使用权重进行随机选择
-      const selected = this.weightedRandom(array, this.selectionHistory[array[0]], count);
-
-      // 更新权重
-      this.selectionHistory[array[0]] = this.updateWeights(this.selectionHistory[array[0]], selected);
-
-      return selected;
+      
+      // 随机打乱数组并取前count个
+      const shuffled = [...array].sort(() => Math.random() - 0.5);
+      const result = shuffled.slice(0, count);
+      console.log('抽取结果:', result);
+      return result;
     },
 
     // 清空历史记录
@@ -823,8 +927,14 @@ export default {
     
     // 修改handleSelect方法
     handleSelect(row) {
+      console.log('----------------------------------------');
+      console.log('开始抽取, 范围:', row.range);
+      console.log('抽取数量:', row.count);
+      
       // 解析范围数据
       const pool = this.parseFullRange(row.range);
+      console.log('解析后的可抽取池:', pool);
+      console.log('可抽取总数:', pool.length);
       
       // 获取需要抽取的数量
       const count = parseInt(row.count);
@@ -834,8 +944,14 @@ export default {
         return;
       }
       
+      if (pool.length === 0) {
+        this.$Message.warning('可抽取的范围为空，请检查配置');
+        return;
+      }
+      
       // 随机抽取
       const selected = this.randomSelect(pool, count);
+      console.log('抽取结果:', selected);
       
       // 显示抽取结果
       this.$Modal.info({
@@ -843,6 +959,7 @@ export default {
         content: `
           <div style="margin-bottom: 15px;">
             <div><strong>抽取项目：</strong>${row.item}</div>
+            <div><strong>抽选阶段：</strong>${row.stage}</div>
             <div><strong>抽取数量：</strong>${selected.length}</div>
             <div><strong>抽取范围：</strong>${row.range}</div>
             <div><strong>抽取原则：</strong>${row.principle}</div>
@@ -861,6 +978,7 @@ export default {
       const record = {
         group: `第${this.recordData.length + 1}组`,
         item: row.item,
+        stage: row.stage,
         status: '正常',
         description: '',
         operator: row.operator,
@@ -902,6 +1020,7 @@ export default {
       this.selectedPrinciple = row.principle;
       this.selectCount = row.count;
       this.operator = row.operator;
+      this.selectedStage = row.stage;
 
       // 解析范围数据
       const ranges = row.range.split('，');
@@ -950,7 +1069,7 @@ export default {
       });
     },
 
-    // 批量抽取
+    // 批量抽取方法的修改
     handleBatchSelect() {
       if (this.selectedRows.length === 0) {
         this.$Message.warning('请先选择要抽取的项目');
@@ -979,6 +1098,7 @@ export default {
         // 添加到结果集
         allResults.push({
           item: row.item,
+          stage: row.stage,
           count: selected.length,
           results: selected,
           operator: row.operator
@@ -988,6 +1108,7 @@ export default {
         const record = {
           group: `第${this.recordData.length + 1}组`,
           item: row.item,
+          stage: row.stage,
           status: '正常',
           description: '',
           operator: row.operator,
@@ -1048,6 +1169,7 @@ export default {
           <div style="margin-bottom: 15px;">
             <div><strong>记录组：</strong>${record.group}</div>
             <div><strong>抽取项目：</strong>${record.item}</div>
+            <div><strong>抽选阶段：</strong>${record.stage || '未指定'}</div>
             <div><strong>抽取人：</strong>${record.operator}</div>
             <div><strong>抽取时间：</strong>${record.time}</div>
             <div><strong>抽取数量：</strong>${record.result.length}</div>
@@ -1141,7 +1263,7 @@ export default {
   computed: {
     isFormValid() {
       // 检查必填项是否都已填写
-      if (!this.selectedItem || !this.operator || !this.selectedPrinciple || !this.selectCount) {
+      if (!this.selectedItem || !this.operator || !this.selectedPrinciple || !this.selectCount || !this.selectedStage) {
         return false;
       }
 
@@ -1203,7 +1325,7 @@ export default {
 }
 
 .config-panel {
-  flex: 1;  /* 固定宽度 */
+  width: 40%;  /* 固定宽度 */
 }
 
 .result-panel {
