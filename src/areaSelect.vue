@@ -12,6 +12,16 @@
             <FormItem label="抽取项目" required>
               <Input v-model="selectedItem" placeholder="请输入抽取项目" />
             </FormItem>
+            <FormItem label="抽选阶段" required>
+              <Select v-model="selectedStage" placeholder="请选择抽选阶段">
+                <Option value="主体" label="主体"></Option>
+                <Option value="砌筑" label="砌筑"></Option>
+                <Option value="抹灰" label="抹灰"></Option>
+                <Option value="门窗" label="门窗"></Option>
+                <Option value="精装修" label="精装修"></Option>
+                <Option value="钢结构" label="钢结构"></Option>
+              </Select>
+            </FormItem>
             <FormItem label="抽取人" required>
               <Input v-model="operator" placeholder="请输入抽取人" />
             </FormItem>
@@ -23,16 +33,6 @@
             
             <FormItem label="抽选数量" required>
               <Input v-model="selectCount" placeholder="请输入抽选数量" />
-            </FormItem>
-            <FormItem label="抽选阶段" required>
-              <Select v-model="selectedStage" placeholder="请选择抽选阶段">
-                <Option value="主体" label="主体"></Option>
-                <Option value="砌筑" label="砌筑"></Option>
-                <Option value="抹灰" label="抹灰"></Option>
-                <Option value="门窗" label="门窗"></Option>
-                <Option value="精装修" label="精装修"></Option>
-                <Option value="钢结构" label="钢结构"></Option>
-              </Select>
             </FormItem>
             <FormItem label="高层" class="high-level-item">
               <div class="high-level-content">
@@ -114,7 +114,7 @@
                 </div>
                 <div class="symbol-input">
                   <span>规则：</span>
-                  <span>栋号仅支持单个数字，楼层和户号支持：单个数字(1)，范围(3-4)，多个范围(3-4,5-8,10-12)</span>
+                  <span>栋号、楼层和户号均支持：单个数字(1)，范围(3-4)，多个范围(3-4,5-8,10-12)</span>
                 </div>
               </div>
             </FormItem>
@@ -389,18 +389,7 @@ export default {
       // 转为字符串并处理空格
       value = String(value).replace(/\s+/g, '');
       
-      // 栋号验证：只允许单个数字
-      if (type === 'building') {
-        if (!/^\d+$/.test(value)) {
-          return { 
-            valid: false, 
-            message: '栋号只支持单个数字，如：1' 
-          };
-        }
-        return { valid: true, message: '' };
-      }
-      
-      // 层号和户号验证
+      // 对所有类型使用相同的验证逻辑
       try {
         // 处理中文符号
         value = value.replace(/，/g, ',').replace(/[~～]/g, '-');
@@ -525,7 +514,7 @@ export default {
       return result.valid;
     },
     
-    // 更新handleSubmit方法
+    // 修改handleSubmit方法
     handleSubmit() {
       // 手动验证所有输入
       let isValid = true;
@@ -668,6 +657,45 @@ export default {
       }
     },
     
+    // 解析带范围的字符串
+    extractRangeString(rangeStr) {
+      console.log('解析范围字符串:', rangeStr);
+      
+      // 分析范围字符串的结构，如"3-4栋-5-8层-12-16户"
+      const result = {
+        building: '',
+        floor: '',
+        room: ''
+      };
+      
+      try {
+        // 提取栋号部分，使用非贪婪匹配确保只匹配到栋号
+        const buildingMatch = rangeStr.match(/(.+?)栋/);
+        if (buildingMatch) {
+          result.building = buildingMatch[1];
+          console.log('提取到栋号部分:', result.building);
+        }
+        
+        // 提取层号部分，匹配栋和层之间的内容
+        const floorMatch = rangeStr.match(/栋-(.+?)层/);
+        if (floorMatch) {
+          result.floor = floorMatch[1];
+          console.log('提取到层号部分:', result.floor);
+        }
+        
+        // 提取户号部分，匹配层和户之间的内容
+        const roomMatch = rangeStr.match(/层-(.+?)户/);
+        if (roomMatch) {
+          result.room = roomMatch[1];
+          console.log('提取到户号部分:', result.room);
+        }
+      } catch (error) {
+        console.error('解析范围字符串出错:', error);
+      }
+      
+      return result;
+    },
+    
     // 解析单个范围字符串，返回所有可能的组合
     parseRangeString(rangeStr) {
       console.log('进入parseRangeString，处理范围:', rangeStr);
@@ -740,37 +768,50 @@ export default {
       
       const result = [];
       
-      // 标准化输入，处理中文字符
-      rangeStr = rangeStr.replace(/，/g, ',').replace(/[~～]/g, '-');
-      
-      // 分割逗号，处理多个范围
-      const ranges = rangeStr.split(',');
-      console.log('分割后的范围:', ranges);
-      
-      ranges.forEach(range => {
-        range = range.trim();
-        console.log('处理范围:', range);
+      try {
+        // 标准化输入，处理中文字符
+        rangeStr = rangeStr.replace(/，/g, ',').replace(/[~～]/g, '-');
+        console.log('标准化后的范围字符串:', rangeStr);
         
-        if (range.includes('-')) {
-          // 处理范围，如 "2-7"
-          const [start, end] = range.split('-').map(num => parseInt(num, 10));
-          console.log(`范围 ${start} 到 ${end}`);
+        // 分割逗号，处理多个范围
+        const ranges = rangeStr.split(',');
+        console.log('分割后的范围列表:', ranges);
+        
+        ranges.forEach(range => {
+          range = range.trim();
+          console.log('处理范围:', range);
           
-          if (!isNaN(start) && !isNaN(end) && start <= end) {
-            for (let i = start; i <= end; i++) {
-              result.push(i);
+          if (range.includes('-')) {
+            // 处理范围，如 "2-7"
+            const [start, end] = range.split('-').map(num => parseInt(num, 10));
+            console.log(`范围 ${start} 到 ${end}`);
+            
+            if (!isNaN(start) && !isNaN(end) && start <= end) {
+              for (let i = start; i <= end; i++) {
+                result.push(i);
+                console.log(`添加数字: ${i}`);
+              }
+            } else {
+              console.warn(`无效范围: ${range}, start=${start}, end=${end}`);
             }
+          } else if (/^\d+$/.test(range)) {
+            // 处理单个数字
+            const num = parseInt(range, 10);
+            if (!isNaN(num)) {
+              result.push(num);
+              console.log(`添加单个数字: ${num}`);
+            } else {
+              console.warn(`无效数字: ${range}`);
+            }
+          } else {
+            console.warn(`无法解析的格式: ${range}`);
           }
-        } else if (/^\d+$/.test(range)) {
-          // 处理单个数字
-          const num = parseInt(range, 10);
-          if (!isNaN(num)) {
-            result.push(num);
-          }
-        }
-      });
+        });
+      } catch (error) {
+        console.error('解析数字范围时出错:', error);
+      }
       
-      console.log('解析结果:', result);
+      console.log('最终解析结果:', result);
       return result;
     },
     
@@ -782,88 +823,71 @@ export default {
       const ranges = rangeStr.split('，');
       console.log('分割后的范围数量:', ranges.length);
       
-      // 如果只有一个范围表达式，尝试直接用正则表达式解析
-      if (ranges.length === 1) {
-        // 提取栋号
-        const buildingMatches = rangeStr.match(/(\d+)栋/g);
-        const floorMatches = rangeStr.match(/(\d+(?:-\d+)?)层/g);
-        const roomMatches = rangeStr.match(/(\d+(?:-\d+)?)户/g);
+      const allCombinations = [];
+      
+      // 处理每一个范围表达式
+      for (const range of ranges) {
+        console.log(`处理范围表达式: ${range}`);
         
-        console.log('正则匹配 - 栋:', buildingMatches);
-        console.log('正则匹配 - 层:', floorMatches);
-        console.log('正则匹配 - 户:', roomMatches);
-        
-        if (buildingMatches) {
-          // 从表达式中提取数字部分
-          const buildingNums = buildingMatches.map(b => b.replace('栋', ''));
-          const floorRanges = floorMatches ? floorMatches.map(f => f.replace('层', '')) : [];
-          const roomRanges = roomMatches ? roomMatches.map(r => r.replace('户', '')) : [];
+        try {
+          // 使用新的正则表达式提取各部分
+          let buildingPart = '';
+          let floorPart = '';
+          let roomPart = '';
           
-          console.log('提取的栋号:', buildingNums);
-          console.log('提取的层范围:', floorRanges);
-          console.log('提取的户范围:', roomRanges);
+          // 提取栋号部分，使用非贪婪匹配确保只匹配到栋号
+          const buildingMatch = range.match(/(.+?)栋/);
+          if (buildingMatch) {
+            buildingPart = buildingMatch[1];
+            console.log('提取到栋号部分:', buildingPart);
+          }
           
-          // 解析所有数字范围
-          const buildings = [];
-          buildingNums.forEach(b => {
-            const nums = this.parseNumberRanges(b);
-            buildings.push(...nums);
-          });
+          // 提取层号部分，匹配栋和层之间的内容
+          const floorMatch = range.match(/栋-(.+?)层/);
+          if (floorMatch) {
+            floorPart = floorMatch[1];
+            console.log('提取到层号部分:', floorPart);
+          }
           
-          const floors = [];
-          floorRanges.forEach(f => {
-            const nums = this.parseNumberRanges(f);
-            floors.push(...nums);
-          });
+          // 提取户号部分，匹配层和户之间的内容
+          const roomMatch = range.match(/层-(.+?)户/);
+          if (roomMatch) {
+            roomPart = roomMatch[1];
+            console.log('提取到户号部分:', roomPart);
+          }
           
-          const rooms = [];
-          roomRanges.forEach(r => {
-            const nums = this.parseNumberRanges(r);
-            rooms.push(...nums);
-          });
+          // 解析各个范围
+          const buildings = this.parseNumberRanges(buildingPart);
+          const floors = this.parseNumberRanges(floorPart);
+          const rooms = this.parseNumberRanges(roomPart);
           
-          console.log('解析后 - 栋:', buildings);
-          console.log('解析后 - 层:', floors);
-          console.log('解析后 - 户:', rooms);
+          console.log('解析后的栋号列表:', buildings);
+          console.log('解析后的层号列表:', floors);
+          console.log('解析后的户号列表:', rooms);
           
-          // 生成所有组合
-          const combinations = [];
-          
-          // 根据实际情况生成组合
+          // 生成所有可能的组合
           buildings.forEach(building => {
             if (floors.length === 0 && rooms.length === 0) {
-              // 只有栋
-              combinations.push(`${building}栋`);
+              // 只有栋号
+              allCombinations.push(`${building}栋`);
             } else if (floors.length > 0 && rooms.length === 0) {
-              // 有栋和层
+              // 有栋号和层号
               floors.forEach(floor => {
-                combinations.push(`${building}栋${floor}层`);
+                allCombinations.push(`${building}栋${floor}层`);
               });
             } else if (floors.length > 0 && rooms.length > 0) {
-              // 有栋、层和户
+              // 有栋号、层号和户号
               floors.forEach(floor => {
                 rooms.forEach(room => {
-                  combinations.push(`${building}栋${floor}层${room}户`);
+                  allCombinations.push(`${building}栋${floor}层${room}户`);
                 });
               });
             }
           });
-          
-          console.log('生成的所有组合:', combinations);
-          return combinations;
+        } catch (error) {
+          console.error('解析范围时出错:', error);
         }
       }
-      
-      // 如果上面的方法不适用，回退到原来的方法
-      const allCombinations = [];
-      
-      // 解析每个范围并合并结果
-      ranges.forEach(range => {
-        console.log('处理单个范围:', range);
-        const combinations = this.parseRangeString(range);
-        console.log('单个范围生成的组合:', combinations);
-        allCombinations.push(...combinations);
-      });
       
       console.log('所有可能组合:', allCombinations);
       return allCombinations;
@@ -1010,8 +1034,11 @@ export default {
       }
     },
 
-    // 处理修改操作
+    // 修改handleEdit方法
     handleEdit(row, index) {
+      console.log('开始编辑数据:', row);
+      console.log('需要解析的范围:', row.range);
+      
       // 设置编辑状态
       this.editingIndex = index;
 
@@ -1024,33 +1051,31 @@ export default {
 
       // 解析范围数据
       const ranges = row.range.split('，');
+      console.log('分割后的范围:', ranges);
+      
       this.buildingGroups = [];
       
-      ranges.forEach(range => {
-        const parts = range.split('-');
-        let building = '', floor = '', room = '';
+      // 为每个范围创建一个组
+      ranges.forEach((range, idx) => {
+        console.log(`处理第${idx+1}个范围: ${range}`);
         
-        parts.forEach(part => {
-          if (part.includes('栋')) {
-            building = part.replace('栋', '');
-          } else if (part.includes('层')) {
-            floor = part.replace('层', '');
-          } else if (part.includes('户')) {
-            room = part.replace('户', '');
-          }
-        });
-
+        // 使用专门的函数提取范围数据
+        const rangeData = this.extractRangeString(range);
+        console.log(`第${idx+1}个范围提取结果:`, rangeData);
+        
         this.buildingGroups.push({
-          building,
-          floor,
-          room
+          building: rangeData.building,
+          floor: rangeData.floor,
+          room: rangeData.room
         });
       });
 
+      console.log('设置的表单数据:', this.buildingGroups);
+      
       // 设置选中状态
       this.buildingSelected = true;
-      this.floorSelected = ranges[0].includes('层');
-      this.roomSelected = ranges[0].includes('户');
+      this.floorSelected = ranges.some(r => r.includes('层'));
+      this.roomSelected = ranges.some(r => r.includes('户'));
 
       // 提示用户
       this.$Message.info('请在左侧表单中修改数据后保存');
